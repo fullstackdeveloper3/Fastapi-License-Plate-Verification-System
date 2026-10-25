@@ -1,4 +1,4 @@
-from time import strftime
+from time import strftime, strptime, localtime, time
 from cs50 import SQL
 
 # Import FastAPI to create the application and define API endpoints
@@ -16,7 +16,7 @@ from pydantic import BaseModel
 app = FastAPI()
 
 # Initialize the database connection
-db = SQL("sqlite:///fiftyville.db")
+db = SQL("sqlite:///anpr.db")
 
 # Define the expected structure of the incoming JSON request body
 # The request must contain a "plate" field whose value is a string
@@ -33,22 +33,35 @@ def index():
 def checking(data: PlateRequest):
 
     # Sanitize the license plate number
-    data.plate = remove(data.plate)
+    data.plate = normalized(data.plate)
 
     # Check whether the license plate exists in the database
-    check = db.execute("SELECT COUNT(license_plate) as n FROM bakery_security_logs WHERE license_plate = ?", data.plate)
+    # Determine whether a vehicle owner was found
+    check = db.execute("SELECT * from users WHERE id = (SELECT owner_user_id as n FROM vehicles WHERE plate_normalized = ?)", data.plate)
 
-    # Determine whether the license plate was found
-    if(check[0]['n']):
+    if check:
+        # Check whether the user has an administrator or private role
+        if check[0]["role"] in ["admin", "private"]:
+            # Return the user's role
+            return check[0]["role"]
 
-        # Record the license plate entry in the history table
-        db.execute("INSERT INTO history(plate,  direction, time) VALUES(?, ?, ?)", data.plate, "in", strftime("%Y/%m/%d %H:%M:%S"))
-        return "True"
+        # Retrieve the user's membership information
+        member = db.execute("SELECT * from memberships WHERE user_id = ?", check[0]["id"])
 
+        # Convert membership date strings into datetime objects
+        member[0]["starts_at"] = strptime(member[0]["starts_at"], "%Y-%m-%d %H:%M:%S")
+        member[0]["expires_at"] = strptime(member[0]["expires_at"], "%Y-%m-%d %H:%M:%S")
+
+        # Check whether the current time falls within the membership period
+        if(member[0]["starts_at"] <= localtime(time()) and localtime(time()) <= member[0]["expires_at"]):
+            return "True"
+
+        return "False"
+        
     return "False"
 
 # Remove non-alphanumeric characters from the license plate
-def remove(plate: str) -> str:
+def normalized(plate: str) -> str:
     word = ""
     for i in plate:
         if (i.isalnum()):

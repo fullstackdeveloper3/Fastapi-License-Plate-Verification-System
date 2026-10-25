@@ -5,7 +5,7 @@ url = "http://127.0.0.1:8000/"
 
 # Data payload you want to send
 payload = {
-    "plate": "5//V.FD6G0",
+    "plate": "KARIM44",
 }
 
 # Send the POST request with JSON data
